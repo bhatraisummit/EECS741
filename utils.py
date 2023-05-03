@@ -1,7 +1,11 @@
 import cv2
+import mahotas
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial.distance import hamming
+from skimage import metrics
+from skimage.feature import local_binary_pattern
+from skimage.filters import threshold_otsu
 from sklearn.metrics import jaccard_score
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -21,6 +25,38 @@ def saliency_map(img):
 
     return threshMap
 
+
+def create_sim_matrix(part):
+    sim = []
+    for i in range(1, 101):
+        row = []
+        for j in range(1, 101):
+            gallery = galary_im(i)
+            probe = probe_ims(j)
+            if (part == 'I'):
+                gallery = binarization(gallery, 128)
+                probe = binarization(probe, 128)
+            elif (part == 'II'):
+                gallery = preprocess(gallery)
+                probe = preprocess(probe)
+            row.append(hamming_sim(gallery.flatten(), probe.flatten()))
+        sim.append(row)
+    return np.asarray(sim)
+
+
+def d_index(genuine, imposter):
+    mu_gen = np.mean(genuine)
+    mu_imp = np.mean(imposter)
+    std_gen = np.std(genuine)
+    std_imp = np.std(imposter)
+    return 2 ** 0.5 * (abs(mu_gen - mu_imp)) / (std_gen ** 2 + std_imp ** 2) ** 0.5
+
+
+def gen_imp_score(sim):
+    gen = np.diag(sim)
+    diag_matrix = np.eye(sim.shape[0], dtype=bool)
+    imp = sim[~diag_matrix]
+    return gen, imp
 
 def low_pass_filter(img, size):
     kernel = np.ones(size, np.float32) / (size[0] * size[1])
@@ -99,37 +135,6 @@ def probe_ims(subject):
     return pgm2numpy(path)
 
 
-def create_sim_matrix(part):
-    sim = []
-    for i in range(1, 101):
-        row = []
-        for j in range(1, 101):
-            gallery = galary_im(i)
-            probe = probe_ims(j)
-            if (part == 'I'):
-                gallery = binarization(gallery, 128)
-                probe = binarization(probe, 128)
-            elif (part == 'II'):
-                gallery = preprocess(gallery)
-                probe = preprocess(probe)
-            row.append(hamming_sim(gallery.flatten(), probe.flatten()))
-        sim.append(row)
-    return np.asarray(sim)
-
-
-def d_index(genuine, imposter):
-    mu_gen = np.mean(genuine)
-    mu_imp = np.mean(imposter)
-    std_gen = np.std(genuine)
-    std_imp = np.std(imposter)
-    return 2 ** 0.5 * (abs(mu_gen - mu_imp)) / (std_gen ** 2 + std_imp ** 2) ** 0.5
-
-
-def gen_imp_score(sim):
-    gen = np.diag(sim)
-    diag_matrix = np.eye(sim.shape[0], dtype=bool)
-    imp = sim[~diag_matrix]
-    return gen, imp
 
 
 def contrast_stretch(img):
@@ -140,3 +145,73 @@ def contrast_stretch(img):
     table = np.interp(x, xp, fp).astype('uint8')
     img = cv2.LUT(img, table)
     return img
+
+
+def lbp(probe, gallery, alg, x, y, bins):
+    # pass
+    def lbp_(img):
+        # img = np.asarray(img)
+        lbph = local_binary_pattern(img, x, y).astype(np.uint8)
+        n_bins = bins
+        # print(lbph)
+        hist, _ = np.histogram(lbph.flatten(), bins=n_bins, range=(0, n_bins - 1))
+        lbph_eq = cv2.equalizeHist(lbph)
+        hist = cv2.calcHist([lbph_eq], [0], None, [n_bins], [0, n_bins])
+
+        hist = hist.astype('float32')
+        hist /= (lbph.shape[0] * lbph.shape[1])
+        lbph_hist = np.where(hist > np.mean(hist), 1, 0).astype('uint8')
+        return lbph_hist
+
+    for j in range(0,len(probe)):
+      for i in range(0, len(gallery)):
+          r[j,i] = alg(lbp_(probe[j]), lbp_(gallery[i]))
+    return r
+
+
+def chow_kaneko(image, max_iterations=1000, convergence_threshold=0.01):
+    threshold = threshold_otsu(image)
+    for i in range(max_iterations):
+        foreground = image[image > threshold]
+        background = image[image <= threshold]
+        new_threshold = 0.5 * (np.mean(foreground) + np.mean(background))
+        if abs(threshold - new_threshold) < convergence_threshold:
+            break
+        threshold = new_threshold
+    # print(threshold)
+    binarized = (image > threshold).astype('uint8')
+    return binarized
+def ssim(img1: np.ndarray, img2:np.ndarray):
+    img1 = img1.flatten()
+    img2 = img2.flatten()
+    return metrics.structural_similarity(img1, img2)
+
+def ridler_calvard(photo):
+    # photo = utils.edge(photo)
+
+    photo = photo.astype(np.uint8)
+
+    # riddler calvard
+    T_rc = mahotas.rc(photo)
+    # print(T_rc)
+    # exit()
+    img = photo > T_rc
+    return img.astype('uint8')
+
+def adaptive_thres_new(probe, gallery,  x, y):
+    def adaptive_(img,x, y):
+
+        img = cv2.bilateralFilter(img, 5, 70, 70)
+        img = contrast_stretch(img)
+        img = contrast_stretch(img)
+        img = contrast_stretch(img)
+
+
+        thres_ = cv2.adaptiveThreshold(img, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, x, y)
+        return thres_
+    for j in range(0,len(probe)):
+      for i in range(0, len(gallery)):
+          r[j,i] = jaccard_score(adaptive_(probe[j], x, y), adaptive_(gallery[i], x, y), average="samples")
+    print(r.shape)
+    print(r[0:9, 0:9])
+    return r
