@@ -58,6 +58,7 @@ def gen_imp_score(sim):
     imp = sim[~diag_matrix]
     return gen, imp
 
+
 def low_pass_filter(img, size):
     kernel = np.ones(size, np.float32) / (size[0] * size[1])
     return cv2.filter2D(img, -1, kernel)
@@ -135,8 +136,6 @@ def probe_ims(subject):
     return pgm2numpy(path)
 
 
-
-
 def contrast_stretch(img):
     # Map the intensity values between the thresholds to the full range of pixel values
     xp = [0, 64, 128, 192, 255]
@@ -146,27 +145,18 @@ def contrast_stretch(img):
     img = cv2.LUT(img, table)
     return img
 
+def lbp_(img, x, y, bins):
+    lbph = local_binary_pattern(img, x, y).astype(np.uint8)
+    n_bins = bins
+    # print(lbph)
+    hist, _ = np.histogram(lbph.flatten(), bins=n_bins, range=(0, n_bins - 1))
+    lbph_eq = cv2.equalizeHist(lbph)
+    hist = cv2.calcHist([lbph_eq], [0], None, [n_bins], [0, n_bins])
 
-def lbp(probe, gallery, alg, x, y, bins):
-    # pass
-    def lbp_(img):
-        # img = np.asarray(img)
-        lbph = local_binary_pattern(img, x, y).astype(np.uint8)
-        n_bins = bins
-        # print(lbph)
-        hist, _ = np.histogram(lbph.flatten(), bins=n_bins, range=(0, n_bins - 1))
-        lbph_eq = cv2.equalizeHist(lbph)
-        hist = cv2.calcHist([lbph_eq], [0], None, [n_bins], [0, n_bins])
-
-        hist = hist.astype('float32')
-        hist /= (lbph.shape[0] * lbph.shape[1])
-        lbph_hist = np.where(hist > np.mean(hist), 1, 0).astype('uint8')
-        return lbph_hist
-
-    for j in range(0,len(probe)):
-      for i in range(0, len(gallery)):
-          r[j,i] = alg(lbp_(probe[j]), lbp_(gallery[i]))
-    return r
+    hist = hist.astype('float32')
+    hist /= (lbph.shape[0] * lbph.shape[1])
+    lbph_hist = np.where(hist > np.mean(hist), 1, 0).astype('uint8')
+    return lbph_hist
 
 
 def chow_kaneko(image, max_iterations=1000, convergence_threshold=0.01):
@@ -181,37 +171,28 @@ def chow_kaneko(image, max_iterations=1000, convergence_threshold=0.01):
     # print(threshold)
     binarized = (image > threshold).astype('uint8')
     return binarized
-def ssim(img1: np.ndarray, img2:np.ndarray):
+
+
+def ssim(img1: np.ndarray, img2: np.ndarray):
     img1 = img1.flatten()
     img2 = img2.flatten()
     return metrics.structural_similarity(img1, img2)
 
+
 def ridler_calvard(photo):
     # photo = utils.edge(photo)
-
     photo = photo.astype(np.uint8)
 
-    # riddler calvard
     T_rc = mahotas.rc(photo)
-    # print(T_rc)
-    # exit()
     img = photo > T_rc
     return img.astype('uint8')
 
-def adaptive_thres_new(probe, gallery,  x, y):
-    def adaptive_(img,x, y):
 
-        img = cv2.bilateralFilter(img, 5, 70, 70)
-        img = contrast_stretch(img)
-        img = contrast_stretch(img)
-        img = contrast_stretch(img)
+def adaptive_(img, x, y):
+    img = cv2.bilateralFilter(img, 5, 70, 70)
+    img = contrast_stretch(img)
+    img = contrast_stretch(img)
+    img = contrast_stretch(img)
 
-
-        thres_ = cv2.adaptiveThreshold(img, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, x, y)
-        return thres_
-    for j in range(0,len(probe)):
-      for i in range(0, len(gallery)):
-          r[j,i] = jaccard_score(adaptive_(probe[j], x, y), adaptive_(gallery[i], x, y), average="samples")
-    print(r.shape)
-    print(r[0:9, 0:9])
-    return r
+    thres_ = cv2.adaptiveThreshold(img, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, x, y)
+    return thres_
