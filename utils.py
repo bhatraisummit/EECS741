@@ -1,63 +1,46 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.spatial.distance import hamming
 import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.spatial.distance import hamming
 from sklearn.metrics import jaccard_score
 from sklearn.metrics.pairwise import cosine_similarity
-from mtcnn import facenet_embeddings
 
 
-def preprocess (img):
-    # img = low_pass_filter(img, (5,5))
-    # img = contrast_stretch(img)
-    # img = cv2.medianBlur(img, 3)
+def preprocess(img):
+    equ = cv2.equalizeHist(img)
+    img = np.hstack((img, equ))
     img = saliency_map(img)
-    # img = local_binary_pattern(img, 24, 3, method='uniform')
-    # img = dog(img)
-    # print(img.max(), img.min())
     return img
 
-def saliency_map (img):
-    saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
-    (success, saliencyMap) = saliency.computeSaliency(img)
-    saliencyMap = (saliencyMap * 255).astype("uint8")
-    # Initialise the more fine-grained saliency detector and compute the saliencyMap
+
+def saliency_map(img):
     saliency = cv2.saliency.StaticSaliencyFineGrained_create()
     (success, saliencyMap) = saliency.computeSaliency(img)
     saliencyMap = (saliencyMap * 255).astype("uint8")
     threshMap = cv2.threshold(saliencyMap, 0, 1, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
 
-    # Show Images
-    # plt.imshow(threshMap, cmap='gray')
-    # plt.imshow(saliencyMap, cmap='gray')
-    # plt.imshow(img)
-    # plt.show()
     return threshMap
 
-# img = cv2.imread('../GallerySet/subject2_img1.pgm', cv2.IMREAD_GRAYSCALE)
-# saliency_map(img)
 
-def low_pass_filter (img, size) :
-    kernel = np.ones(size, np.float32) / (size[0]*size[1])
+def low_pass_filter(img, size):
+    kernel = np.ones(size, np.float32) / (size[0] * size[1])
     return cv2.filter2D(img, -1, kernel)
 
-def gaussian_filter (img):
+
+def gaussian_filter(img):
     kernel = np.array([[1, 2, 1],
                        [2, 4, 2],
                        [1, 2, 1]]) / 16
     return cv2.filter2D(img, -1, kernel)
 
-def high_pass_filter (img):
+
+def high_pass_filter(img):
     kernel = np.array([[-1, -1, -1],
                        [-1, 8, -1],
                        [-1, -1, -1]])
-    # kernel = np.array([[-1, -1, -1, -1, -1],
-    #                    [-1, 1, 2, 1, -1],
-    #                    [-1, 2, 4, 2, -1],
-    #                    [-1, 1, 2, 1, -1],
-    #                    [-1, -1, -1, -1, -1]])
 
     return cv2.filter2D(img, -1, kernel)
+
 
 def dog(img):
     gamma = 1
@@ -71,7 +54,6 @@ def dog(img):
     img_dog = img_dog / np.amax(np.abs(img_dog))
     img_dog2 = (255.0 * (0.5 * img_dog + 0.5)).clip(0, 255).astype(np.uint8)
     return img_dog2
-
 
 
 def binarization(img, thres):
@@ -88,6 +70,7 @@ def binarization_using_cv2(img, type):
 def jaccard_sim(img1, img2):
     return jaccard_score(img1, img2, average='weighted')
 
+
 def hamming_sim(img1, img2):
     return hamming(img1, img2)
 
@@ -97,9 +80,6 @@ def euc_sim(img1, img2):
 
 
 def cosine_sim(img1, img2):
-    # im1_norm = np.linalg.norm(img1)
-    # im2_norm = np.linalg.norm(img2)
-    # im_1_2dot = img1 @ img2
     return cosine_similarity(img1, img2)
 
 
@@ -119,28 +99,19 @@ def probe_ims(subject):
     return pgm2numpy(path)
 
 
-def create_sim_matrix(binarization_type):
+def create_sim_matrix(part):
     sim = []
     for i in range(1, 101):
         row = []
         for j in range(1, 101):
             gallery = galary_im(i)
             probe = probe_ims(j)
-            gallery = preprocess(gallery)
-            probe = preprocess(probe)
-            # if (binarization_type == 'bin'):
-            #     g = binarization(gallery, 128)
-            #     p = binarization(probe, 128)
-
-            # elif (binarization_type == cv2.ADAPTIVE_THRESH_MEAN_C):
-            #     g = binarization_using_cv2(gallery, cv2.ADAPTIVE_THRESH_MEAN_C).flatten()
-            #     p = binarization_using_cv2(probe, cv2.ADAPTIVE_THRESH_MEAN_C).flatten()
-            #
-            # elif (binarization_type == cv2.ADAPTIVE_THRESH_GAUSSIAN_C):
-            #     g = binarization_using_cv2(gallery, cv2.ADAPTIVE_THRESH_GAUSSIAN_C).flatten()
-            #     p = binarization_using_cv2(probe, cv2.ADAPTIVE_THRESH_GAUSSIAN_C).flatten()
-            # g = facenet_embeddings(g).flatten()
-            # p = facenet_embeddings(p).flatten()
+            if (part == 'I'):
+                gallery = binarization(gallery, 128)
+                probe = binarization(probe, 128)
+            elif (part == 'II'):
+                gallery = preprocess(gallery)
+                probe = preprocess(probe)
             row.append(hamming_sim(gallery.flatten(), probe.flatten()))
         sim.append(row)
     return np.asarray(sim)
